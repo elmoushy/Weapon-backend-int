@@ -3,7 +3,44 @@
 import django.db.models.deletion
 import surveys.models
 import uuid
-from django.db import migrations, models
+from django.db import migrations, models, connection
+
+
+def safe_drop_index(cursor, index_name):
+    """Drop index if it exists, ignore if not."""
+    try:
+        cursor.execute(
+            "SELECT COUNT(*) FROM user_indexes WHERE index_name = UPPER(:idx)",
+            {'idx': index_name}
+        )
+        if cursor.fetchone()[0] > 0:
+            cursor.execute(f"DROP INDEX {index_name}")
+            print(f"✓ Dropped existing index: {index_name}")
+    except Exception:
+        pass
+
+
+def check_and_drop_existing_indexes(apps, schema_editor):
+    """
+    Drop existing indexes that might conflict with new ones in Oracle.
+    Oracle raises ORA-01408 if trying to create duplicate indexes.
+    This runs BEFORE creating new fields/indexes.
+    """
+    if connection.vendor != 'oracle':
+        return
+    
+    with connection.cursor() as cursor:
+        # Drop all potentially conflicting indexes
+        indexes = [
+            'option_text_hash_idx',
+            'option_satisfaction_idx',
+            'surveys_question_CSAT_Calculate_idx',
+            'surveys_question_NPS_Calculate_idx', 
+            'surveys_question_semantic_tag_idx',
+        ]
+        
+        for idx in indexes:
+            safe_drop_index(cursor, idx)
 
 
 class Migration(migrations.Migration):
@@ -13,6 +50,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(check_and_drop_existing_indexes, migrations.RunPython.noop),
         migrations.AddField(
             model_name='question',
             name='CSAT_Calculate',

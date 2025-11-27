@@ -53,6 +53,6 @@ bleach==6.2.0  # HTML sanitization to prevent XSS
 django-ratelimit==4.1.0  # Rate limiting for brute force protection
 django-csp==4.0b1  # Content Security Policy headers
 webencodings==0.5.1  # Required by bleach
-python-magic>=0.4.27  # File type detection (Linux: install libmagic1, Windows: use python-magic-bin)
-# python-magic-bin>=0.4.14  # Windows only - uncomment on Windows, comment on Linux
+python-magic>=0.4.27  # File type detection via magic bytes (Linux/Mac)
+# python-magic-bin>=0.4.14  # Windows binary for libmagic (Windows only - commented for Linux)
 django-redis>=5.4.0  # Redis cache backend (optional, falls back to LocMemCache)
