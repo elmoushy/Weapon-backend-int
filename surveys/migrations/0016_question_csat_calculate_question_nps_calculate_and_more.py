@@ -54,12 +54,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='question',
             name='CSAT_Calculate',
-            field=models.BooleanField(db_index=True, default=False, help_text='Indicates if this question is used for CSAT calculation (only valid for single_choice, rating, yes_no)'),
+            field=models.BooleanField(default=False, help_text='Indicates if this question is used for CSAT calculation (only valid for single_choice, rating, yes_no)'),
         ),
         migrations.AddField(
             model_name='question',
             name='NPS_Calculate',
-            field=models.BooleanField(db_index=True, default=False, help_text='Indicates if this question is used for NPS calculation (only valid for rating questions)'),
+            field=models.BooleanField(default=False, help_text='Indicates if this question is used for NPS calculation (only valid for rating questions)'),
         ),
         migrations.AddField(
             model_name='question',
@@ -74,15 +74,15 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='question',
             name='semantic_tag',
-            field=models.CharField(choices=[('none', 'None'), ('nps', 'NPS'), ('csat', 'CSAT')], db_index=True, default='none', help_text='Semantic tag for analytics optimization (fallback if Calculate flags not set)', max_length=20),
+            field=models.CharField(choices=[('none', 'None'), ('nps', 'NPS'), ('csat', 'CSAT')], default='none', help_text='Semantic tag for analytics optimization (fallback if Calculate flags not set)', max_length=20),
         ),
         migrations.CreateModel(
             name='QuestionOption',
             fields=[
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ('option_text', surveys.models.EncryptedCharField(help_text='Option text (encrypted, must match text in question.options JSON)', max_length=255)),
-                ('option_text_hash', models.CharField(blank=True, db_index=True, help_text='SHA256 hash of option text for efficient matching', max_length=64)),
-                ('satisfaction_value', models.IntegerField(blank=True, choices=[(2, 'Satisfied'), (1, 'Neutral'), (0, 'Dissatisfied')], db_index=True, help_text='CSAT satisfaction mapping for single choice options (required when question.CSAT_Calculate=True)', null=True)),
+                ('option_text_hash', models.CharField(blank=True, help_text='SHA256 hash of option text for efficient matching', max_length=64)),
+                ('satisfaction_value', models.IntegerField(blank=True, choices=[(2, 'Satisfied'), (1, 'Neutral'), (0, 'Dissatisfied')], help_text='CSAT satisfaction mapping for single choice options (required when question.CSAT_Calculate=True)', null=True)),
                 ('order', models.PositiveIntegerField(default=0)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
@@ -93,7 +93,6 @@ class Migration(migrations.Migration):
                 'verbose_name_plural': 'Question Options',
                 'db_table': 'surveys_question_option',
                 'ordering': ['question', 'order'],
-                'indexes': [models.Index(fields=['option_text_hash'], name='option_text_hash_idx'), models.Index(fields=['satisfaction_value'], name='option_satisfaction_idx')],
                 'constraints': [models.UniqueConstraint(fields=('question', 'option_text_hash'), name='unique_question_option_hash')],
             },
         ),
