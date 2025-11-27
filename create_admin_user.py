@@ -1,6 +1,6 @@
 """
 Script to create a superadmin user for WeaponPowerCloud Backend.
-Usage: .\.venv\Scripts\Activate.ps1; python create_admin_user.py
+Usage: python create_admin_user.py
 """
 import os
 import django
@@ -27,12 +27,12 @@ def create_superadmin():
         update = input("\nDo you want to update the password and role? (yes/no): ").strip().lower()
         if update == 'yes':
             user.set_password(password)
-            user.role = 'super_admin'
-            user.is_staff = True
-            user.is_superuser = True
+            user.role = 'super_admin'  # Role controls is_staff and is_superuser
             user.save()
             print(f"✅ User '{email}' updated successfully!")
             print(f"   Role: {user.role}")
+            print(f"   Is Staff: {user.is_staff}")
+            print(f"   Is Superuser: {user.is_superuser}")
             print(f"   Password: Updated")
         else:
             print("Operation cancelled.")
@@ -41,18 +41,14 @@ def create_superadmin():
     try:
         # Create superadmin user
         # Note: username is set to email for regular auth users
+        # is_staff and is_superuser are automatically set based on role
         user = User.objects.create_user(
             username=email,  # Use email as username for regular auth
             email=email,
             password=password,
             auth_type='regular',
-            role='super_admin'
+            role='super_admin'  # This automatically makes is_staff=True and is_superuser=True
         )
-        
-        # Set Django admin permissions
-        user.is_staff = True
-        user.is_superuser = True
-        user.save()
         
         print("✅ Superadmin user created successfully!")
         print(f"   Email: {email}")
