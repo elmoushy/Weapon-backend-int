@@ -1,5 +1,5 @@
 """
-"""Image optimization utilities for newsletters.
+Image optimization utilities for newsletters.
 
 This module provides image processing functionality including:
 - Image optimization (resize, compress, progressive encoding)
