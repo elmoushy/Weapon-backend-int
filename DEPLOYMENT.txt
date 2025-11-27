@@ -1,0 +1,118 @@
+============================================
+WeaponPowerCloud Backend - Deployment Guide
+============================================
+
+1. INSTALL REDIS (Ubuntu/Debian)
+--------------------------------
+sudo apt update
+sudo apt install redis-server
+
+# Start Redis
+sudo systemctl start redis-server
+sudo systemctl enable redis-server
+
+# Verify Redis is running
+redis-cli ping
+# Should return: PONG
+
+
+2. INSTALL REDIS (CentOS/RHEL)
+------------------------------
+sudo yum install epel-release
+sudo yum install redis
+
+# Start Redis
+sudo systemctl start redis
+sudo systemctl enable redis
+
+
+3. REDIS WITH PASSWORD (Optional)
+---------------------------------
+# Edit Redis config
+sudo nano /etc/redis/redis.conf
+
+# Find and set:
+requirepass your_redis_password
+
+# Restart Redis
+sudo systemctl restart redis-server
+
+
+4. PREPARE ENVIRONMENT
+----------------------
+# Copy production env file
+cp .env.production .env
+
+# Edit and fill your values
+nano .env
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Run migrations
+python manage.py migrate
+
+
+5. RUN SERVER WITH DAPHNE
+-------------------------
+# Basic run (development/testing)
+daphne -b 0.0.0.0 -p 8000 weaponpowercloud_backend.asgi:application
+
+# Production with workers
+daphne -b 0.0.0.0 -p 8000 -v2 weaponpowercloud_backend.asgi:application
+
+
+6. RUN AS SYSTEMD SERVICE (Recommended)
+---------------------------------------
+# Create service file
+sudo nano /etc/systemd/system/weaponpower.service
+
+# Add content:
+[Unit]
+Description=WeaponPowerCloud Backend
+After=network.target redis-server.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/path/to/your/project
+ExecStart=/path/to/venv/bin/daphne -b 0.0.0.0 -p 8000 weaponpowercloud_backend.asgi:application
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
+# Enable and start
+sudo systemctl daemon-reload
+sudo systemctl enable weaponpower
+sudo systemctl start weaponpower
+
+# Check status
+sudo systemctl status weaponpower
+
+
+7. TEST REDIS CONNECTION
+------------------------
+# From project directory
+python manage.py shell
+
+# In Python shell:
+from django.core.cache import cache
+cache.set('test', 'working', 30)
+print(cache.get('test'))  # Should print: working
+
+
+8. QUICK COMMANDS
+-----------------
+# Check Redis status
+sudo systemctl status redis-server
+
+# View Redis logs
+sudo tail -f /var/log/redis/redis-server.log
+
+# Check app logs
+tail -f logs/django.log
+
+# Restart services
+sudo systemctl restart redis-server
+sudo systemctl restart weaponpower

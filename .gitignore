@@ -1,0 +1,44 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Database
+db.sqlite3
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Django
+staticfiles/
+media/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
