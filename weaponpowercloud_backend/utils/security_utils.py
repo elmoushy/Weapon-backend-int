@@ -34,9 +34,9 @@ def sanitize_filename(filename, max_length=255):
     Sanitize filename to prevent path traversal and injection attacks.
     
     SECURITY PROTECTIONS:
-    - Path traversal: Removes ../../ and ..\..\  patterns
-    - Null bytes: Strips \x00 characters
-    - Dangerous chars: Removes <, >, :, ", /, \, |, ?, *
+    - Path traversal: Removes ../../ and ..\\..\\ patterns
+    - Null bytes: Strips \\x00 characters
+    - Dangerous chars: Removes <, >, :, ", /, \\, |, ?, *
     - Unicode attacks: Normalizes to ASCII (prevents homograph attacks)
     - Reserved names: Prefixes Windows reserved names (CON, PRN, etc.)
     - Length limits: Truncates to max_length while preserving extension
