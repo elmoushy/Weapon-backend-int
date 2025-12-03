@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     'surveys',
     'newsletters',  # Newsletter system with BLOB image storage
     'notifications',  # New app for real-time notifications
+    'quicklinks',  # Quick Links for external app shortcuts with BLOB icon storage
 ]
 
 # Custom User Model Configuration

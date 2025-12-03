@@ -33,6 +33,7 @@ def api_root(request):
             'surveys': '/api/surveys/',
             'newsletters': '/api/newsletters/',
             'notifications': '/api/notifications/',
+            'quicklinks': '/api/quicklinks/',
             'admin': '/admin/',
             'api_docs': '/api/' if settings.DEBUG else None,
         },
@@ -58,6 +59,9 @@ urlpatterns = [
     
     # Notifications endpoints
     path('api/notifications/', include('notifications.urls')),
+    
+    # Quick Links endpoints
+    path('api/quicklinks/', include('quicklinks.urls')),
 
     # Add your other app URLs here
     # path('api/weapons/', include('weapons.urls')),
