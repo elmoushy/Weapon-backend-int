@@ -85,6 +85,7 @@ INSTALLED_APPS = [
     'newsletters',  # Newsletter system with BLOB image storage
     'notifications',  # New app for real-time notifications
     'quicklinks',  # Quick Links for external app shortcuts with BLOB icon storage
+    'internal_chat',  # Internal chat system with WebSocket support
 ]
 
 # Custom User Model Configuration
@@ -389,6 +390,11 @@ LOGGING = {
             'level': 'INFO',
             'propagate': True,
         },
+        'internal_chat': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
         'daphne': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
@@ -561,5 +567,36 @@ WEBSOCKET_MAX_MESSAGE_LENGTH = int(os.getenv('WEBSOCKET_MAX_MESSAGE_LENGTH', '10
 
 # Maximum concurrent WebSocket connections per user
 WEBSOCKET_MAX_CONNECTIONS_PER_USER = int(os.getenv('WEBSOCKET_MAX_CONNECTIONS_PER_USER', '10'))
+
+# ============================================================================
+# INTERNAL CHAT CONFIGURATION
+# ============================================================================
+
+# Feature Toggle
+INTERNAL_CHAT_ENABLED = os.getenv('INTERNAL_CHAT_ENABLED', 'True').lower() == 'true'
+
+# Default group posting mode for new groups ('all' or 'admins_only')
+DEFAULT_GROUP_POSTING_MODE = os.getenv('DEFAULT_GROUP_POSTING_MODE', 'all')
+
+# Attachment configuration
+INTERNAL_CHAT_MAX_ATTACHMENT_SIZE = int(
+    os.getenv('INTERNAL_CHAT_MAX_ATTACHMENT_SIZE', str(10 * 1024 * 1024))  # 10MB default
+)
+
+INTERNAL_CHAT_ALLOWED_CONTENT_TYPES = [
+    'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/plain',
+    'text/csv',
+]
+
+# Rate limiting for chat messages (API level)
+INTERNAL_CHAT_MESSAGE_RATE_LIMIT = os.getenv('INTERNAL_CHAT_MESSAGE_RATE_LIMIT', '60/minute')
 
 

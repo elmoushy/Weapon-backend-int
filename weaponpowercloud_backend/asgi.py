@@ -19,15 +19,20 @@ django.setup()
 
 # Import WebSocket routing after Django setup
 from notifications.routing import websocket_urlpatterns as notification_websocket_urlpatterns
+from internal_chat.routing import websocket_urlpatterns as chat_websocket_urlpatterns
+from internal_chat.middleware import TokenAuthMiddleware
 
 django_asgi_app = get_asgi_application()
+
+# Combine all WebSocket URL patterns
+all_websocket_urlpatterns = notification_websocket_urlpatterns + chat_websocket_urlpatterns
 
 # WebSocket-enabled ASGI application
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
     "websocket": AllowedHostsOriginValidator(
-        AuthMiddlewareStack(
-            URLRouter(notification_websocket_urlpatterns)
+        TokenAuthMiddleware(
+            URLRouter(all_websocket_urlpatterns)
         )
     ),
 })
