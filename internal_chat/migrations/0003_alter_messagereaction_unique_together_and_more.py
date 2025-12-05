@@ -4,6 +4,118 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def alter_unique_constraint(apps, schema_editor):
+    """
+    Handle unique constraint changes for MessageReaction.
+    Oracle may already have a (message, user) constraint from 0001.
+    SQLite may have (message, user, emoji) that needs to be changed.
+    """
+    MessageReaction = apps.get_model('internal_chat', 'MessageReaction')
+    
+    if schema_editor.connection.vendor == 'oracle':
+        # On Oracle, check if we already have the correct constraint (message_id, user_id)
+        # If so, skip. If we have (message_id, user_id, emoji), drop it and create new one.
+        cursor = schema_editor.connection.cursor()
+        
+        # Find unique constraints on the table
+        cursor.execute("""
+            SELECT c.constraint_name, LISTAGG(cc.column_name, ',') WITHIN GROUP (ORDER BY cc.position) as columns
+            FROM user_constraints c
+            JOIN user_cons_columns cc ON c.constraint_name = cc.constraint_name
+            WHERE c.table_name = 'INTERNAL_CHAT_REACTION'
+              AND c.constraint_type = 'U'
+            GROUP BY c.constraint_name
+        """)
+        constraints = cursor.fetchall()
+        
+        has_correct_constraint = False
+        old_constraint_name = None
+        
+        for constraint_name, columns in constraints:
+            if columns == 'MESSAGE_ID,USER_ID':
+                has_correct_constraint = True
+            elif columns == 'EMOJI,MESSAGE_ID,USER_ID' or columns == 'MESSAGE_ID,USER_ID,EMOJI':
+                old_constraint_name = constraint_name
+        
+        if old_constraint_name and not has_correct_constraint:
+            # Drop old constraint and create new one
+            cursor.execute(f'ALTER TABLE INTERNAL_CHAT_REACTION DROP CONSTRAINT {old_constraint_name}')
+            cursor.execute('ALTER TABLE INTERNAL_CHAT_REACTION ADD CONSTRAINT internal_chat_reaction_msg_usr_uniq UNIQUE (MESSAGE_ID, USER_ID)')
+        elif not has_correct_constraint:
+            # Create new constraint
+            cursor.execute('ALTER TABLE INTERNAL_CHAT_REACTION ADD CONSTRAINT internal_chat_reaction_msg_usr_uniq UNIQUE (MESSAGE_ID, USER_ID)')
+        # else: correct constraint already exists, do nothing
+    else:
+        # For SQLite and other databases, use Django's built-in method
+        # First try to remove old constraint
+        try:
+            schema_editor.alter_unique_together(
+                MessageReaction,
+                {('message', 'user', 'emoji')},  # old
+                set()  # remove
+            )
+        except Exception:
+            pass  # Constraint might not exist
+        
+        # Add new constraint
+        schema_editor.alter_unique_together(
+            MessageReaction,
+            set(),  # from empty
+            {('message', 'user')}  # to new
+        )
+
+
+def reverse_unique_constraint(apps, schema_editor):
+    """Reverse operation."""
+    MessageReaction = apps.get_model('internal_chat', 'MessageReaction')
+    
+    if schema_editor.connection.vendor == 'oracle':
+        cursor = schema_editor.connection.cursor()
+        # Find and drop the (message, user) constraint
+        cursor.execute("""
+            SELECT c.constraint_name
+            FROM user_constraints c
+            JOIN user_cons_columns cc ON c.constraint_name = cc.constraint_name
+            WHERE c.table_name = 'INTERNAL_CHAT_REACTION'
+              AND c.constraint_type = 'U'
+            GROUP BY c.constraint_name
+            HAVING LISTAGG(cc.column_name, ',') WITHIN GROUP (ORDER BY cc.position) = 'MESSAGE_ID,USER_ID'
+        """)
+        result = cursor.fetchone()
+        if result:
+            cursor.execute(f'ALTER TABLE INTERNAL_CHAT_REACTION DROP CONSTRAINT {result[0]}')
+        # Add back the old constraint
+        cursor.execute('ALTER TABLE INTERNAL_CHAT_REACTION ADD CONSTRAINT internal_chat_reaction_msg_usr_emoji_uniq UNIQUE (MESSAGE_ID, USER_ID, EMOJI)')
+    else:
+        schema_editor.alter_unique_together(
+            MessageReaction,
+            {('message', 'user')},
+            {('message', 'user', 'emoji')}
+        )
+
+
+def add_index_if_not_oracle(apps, schema_editor):
+    """Skip adding index on Oracle since unique_together already creates one."""
+    if schema_editor.connection.vendor != 'oracle':
+        MessageReaction = apps.get_model('internal_chat', 'MessageReaction')
+        index = models.Index(fields=['message', 'user'], name='internal_ch_message_05d415_idx')
+        try:
+            schema_editor.add_index(MessageReaction, index)
+        except Exception:
+            pass  # Index might already exist
+
+
+def remove_index_if_not_oracle(apps, schema_editor):
+    """Reverse operation - only remove if not Oracle."""
+    if schema_editor.connection.vendor != 'oracle':
+        MessageReaction = apps.get_model('internal_chat', 'MessageReaction')
+        index = models.Index(fields=['message', 'user'], name='internal_ch_message_05d415_idx')
+        try:
+            schema_editor.remove_index(MessageReaction, index)
+        except Exception:
+            pass
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -12,12 +124,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AlterUniqueTogether(
-            name='messagereaction',
-            unique_together={('message', 'user')},
-        ),
-        migrations.AddIndex(
-            model_name='messagereaction',
-            index=models.Index(fields=['message', 'user'], name='internal_ch_message_05d415_idx'),
-        ),
+        # Use RunPython to handle constraint changes in a database-agnostic way
+        migrations.RunPython(alter_unique_constraint, reverse_unique_constraint),
+        # Use RunPython to conditionally add index (skip on Oracle where unique constraint already creates index)
+        migrations.RunPython(add_index_if_not_oracle, remove_index_if_not_oracle),
     ]

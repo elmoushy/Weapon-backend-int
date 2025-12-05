@@ -155,6 +155,7 @@ if USE_ORACLE:
     SILENCED_SYSTEM_CHECKS = [
         'fields.E007',  # Ignore Oracle field name length warnings
         'models.W037',  # Ignore Oracle conditional index warnings
+        'models.W036',  # Oracle doesn't support conditional unique constraints (enforced in save() method)
     ]
     
     # Set Oracle NLS_LANG environment variable for character set handling

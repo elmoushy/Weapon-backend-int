@@ -109,7 +109,7 @@ class QuickLink(models.Model):
     )
     
     redirect_url = models.CharField(
-        max_length=2048,
+        max_length=1000,  # Reduced from 2048 for Oracle compatibility (VARCHAR2 limit with UTF-8)
         validators=[URLValidator()],
         help_text="External URL to redirect to when clicking the link"
     )

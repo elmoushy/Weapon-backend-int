@@ -377,6 +377,9 @@ class NewsletterImage(models.Model):
             models.Index(fields=['newsletter', 'is_main']),
         ]
         constraints = [
+            # Note: Oracle doesn't support conditional unique constraints (W036).
+            # The uniqueness is enforced in the save() method below.
+            # This constraint provides additional database-level protection on PostgreSQL/SQLite.
             models.UniqueConstraint(
                 fields=['newsletter', 'is_main'],
                 condition=models.Q(is_main=True),

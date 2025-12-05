@@ -3,6 +3,143 @@
 from django.db import migrations, models
 
 
+def safe_drop_index(cursor, index_name):
+    """Safely drop an index if it exists in Oracle."""
+    try:
+        cursor.execute(f'DROP INDEX {index_name}')
+    except Exception:
+        pass  # Index doesn't exist
+
+
+def add_option_text_hash_index(apps, schema_editor):
+    """Add index only if it doesn't already exist (Oracle creates index from db_index=True)"""
+    if schema_editor.connection.vendor != 'oracle':
+        QuestionOption = apps.get_model('surveys', 'QuestionOption')
+        index = models.Index(fields=['option_text_hash'], name='option_text_hash_idx')
+        try:
+            schema_editor.add_index(QuestionOption, index)
+        except Exception:
+            pass  # Index already exists
+
+
+def remove_option_text_hash_index(apps, schema_editor):
+    """Remove index only if not Oracle"""
+    if schema_editor.connection.vendor != 'oracle':
+        QuestionOption = apps.get_model('surveys', 'QuestionOption')
+        index = models.Index(fields=['option_text_hash'], name='option_text_hash_idx')
+        try:
+            schema_editor.remove_index(QuestionOption, index)
+        except Exception:
+            pass
+
+
+def alter_question_fields_safe(apps, schema_editor):
+    """
+    Safely add db_index to question fields.
+    On Oracle, if index already exists, skip. Otherwise create it directly.
+    """
+    Question = apps.get_model('surveys', 'Question')
+    
+    if schema_editor.connection.vendor == 'oracle':
+        # On Oracle, we need to check if index exists before creating
+        cursor = schema_editor.connection.cursor()
+        
+        # Get existing indexes
+        cursor.execute("""
+            SELECT index_name, column_name 
+            FROM user_ind_columns 
+            WHERE table_name = 'SURVEYS_QUESTION'
+        """)
+        existing_indexes = {row[1]: row[0] for row in cursor.fetchall()}
+        
+        # Add indexes if they don't exist
+        index_mappings = [
+            ('CSAT_CALCULATE', 'surveys_q_csat_calc_idx'),
+            ('NPS_CALCULATE', 'surveys_q_nps_calc_idx'),
+            ('SEMANTIC_TAG', 'surveys_q_semantic_idx'),
+        ]
+        
+        for column, index_name in index_mappings:
+            if column not in existing_indexes:
+                try:
+                    cursor.execute(f'CREATE INDEX {index_name} ON SURVEYS_QUESTION ({column})')
+                except Exception:
+                    pass  # Index might already exist with different name
+    else:
+        # For other databases, use Django's AlterField
+        pass  # Will be handled by the regular AlterField operations
+
+
+def reverse_alter_question_fields(apps, schema_editor):
+    """Reverse - no-op since we don't want to remove indexes"""
+    pass
+
+
+def alter_option_text_hash_field(apps, schema_editor):
+    """
+    Add db_index to option_text_hash field - skip on Oracle since the unique constraint
+    already provides indexing and Django's AlterField causes ORA-00955 conflicts.
+    """
+    if schema_editor.connection.vendor == 'oracle':
+        # On Oracle, the unique constraint already creates an index, skip
+        return
+    
+    # On other databases, let Django handle it
+    QuestionOption = apps.get_model('surveys', 'QuestionOption')
+    old_field = QuestionOption._meta.get_field('option_text_hash')
+    # Create new field definition with db_index=True
+    new_field = models.CharField(
+        blank=True,
+        db_index=True,
+        help_text='SHA256 hash of option text for efficient matching',
+        max_length=64
+    )
+    new_field.set_attributes_from_name('option_text_hash')
+    schema_editor.alter_field(QuestionOption, old_field, new_field)
+
+
+def reverse_alter_option_text_hash_field(apps, schema_editor):
+    """Reverse - remove db_index (no-op for Oracle)"""
+    if schema_editor.connection.vendor == 'oracle':
+        return
+    # For other databases, this is a no-op since we can leave the index
+
+
+def add_satisfaction_index_safe(apps, schema_editor):
+    """Add satisfaction_value index, handling Oracle case where it might already exist."""
+    QuestionOption = apps.get_model('surveys', 'QuestionOption')
+    index = models.Index(fields=['satisfaction_value'], name='option_satisfaction_idx')
+    try:
+        schema_editor.add_index(QuestionOption, index)
+    except Exception:
+        pass  # Index might already exist
+
+
+def remove_satisfaction_index_safe(apps, schema_editor):
+    """Remove satisfaction_value index."""
+    QuestionOption = apps.get_model('surveys', 'QuestionOption')
+    index = models.Index(fields=['satisfaction_value'], name='option_satisfaction_idx')
+    try:
+        schema_editor.remove_index(QuestionOption, index)
+    except Exception:
+        pass
+
+
+class OracleSkipAlterField(migrations.AlterField):
+    """Custom AlterField that skips index creation on Oracle when adding db_index."""
+    
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        if schema_editor.connection.vendor == 'oracle':
+            # Skip on Oracle - indexes handled separately
+            return
+        super().database_forwards(app_label, schema_editor, from_state, to_state)
+    
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        if schema_editor.connection.vendor == 'oracle':
+            return
+        super().database_backwards(app_label, schema_editor, from_state, to_state)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -14,32 +151,28 @@ class Migration(migrations.Migration):
         #     model_name='deviceresponse',
         #     name='ip_address',
         # ),
-        migrations.AlterField(
+        # Handle Oracle index creation separately
+        migrations.RunPython(alter_question_fields_safe, reverse_alter_question_fields),
+        # Use custom AlterField that skips on Oracle
+        OracleSkipAlterField(
             model_name='question',
             name='CSAT_Calculate',
             field=models.BooleanField(db_index=True, default=False, help_text='Indicates if this question is used for CSAT calculation (only valid for single_choice, rating, yes_no)'),
         ),
-        migrations.AlterField(
+        OracleSkipAlterField(
             model_name='question',
             name='NPS_Calculate',
             field=models.BooleanField(db_index=True, default=False, help_text='Indicates if this question is used for NPS calculation (only valid for rating questions)'),
         ),
-        migrations.AlterField(
+        OracleSkipAlterField(
             model_name='question',
             name='semantic_tag',
             field=models.CharField(choices=[('none', 'None'), ('nps', 'NPS'), ('csat', 'CSAT')], db_index=True, default='none', help_text='Semantic tag for analytics optimization (fallback if Calculate flags not set)', max_length=20),
         ),
-        migrations.AlterField(
-            model_name='questionoption',
-            name='option_text_hash',
-            field=models.CharField(blank=True, db_index=True, help_text='SHA256 hash of option text for efficient matching', max_length=64),
-        ),
-        migrations.AddIndex(
-            model_name='questionoption',
-            index=models.Index(fields=['option_text_hash'], name='option_text_hash_idx'),
-        ),
-        migrations.AddIndex(
-            model_name='questionoption',
-            index=models.Index(fields=['satisfaction_value'], name='option_satisfaction_idx'),
-        ),
+        # Use RunPython to safely alter option_text_hash (skip on Oracle)
+        migrations.RunPython(alter_option_text_hash_field, reverse_alter_option_text_hash_field),
+        # Use RunPython for conditional index creation (skip on Oracle where db_index=True already creates it)
+        migrations.RunPython(add_option_text_hash_index, remove_option_text_hash_index),
+        # Use RunPython for satisfaction_value index to handle Oracle gracefully
+        migrations.RunPython(add_satisfaction_index_safe, remove_satisfaction_index_safe),
     ]

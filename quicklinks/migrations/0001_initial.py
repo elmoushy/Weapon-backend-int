@@ -23,7 +23,7 @@ class Migration(migrations.Migration):
                 ('icon_data', models.BinaryField(blank=True, help_text='Icon image data stored as BLOB (PNG, JPG, SVG, WEBP - max 5MB)', null=True)),
                 ('icon_mime_type', models.CharField(blank=True, help_text='MIME type of the icon: image/png, image/jpeg, image/svg+xml, image/webp', max_length=50, null=True)),
                 ('icon_original_filename', models.CharField(blank=True, help_text='Original filename of uploaded icon (sanitized)', max_length=255, null=True)),
-                ('redirect_url', models.CharField(help_text='External URL to redirect to when clicking the link', max_length=2048, validators=[django.core.validators.URLValidator()])),
+                ('redirect_url', models.CharField(help_text='External URL to redirect to when clicking the link', max_length=1000, validators=[django.core.validators.URLValidator()])),
                 ('position', models.IntegerField(db_index=True, default=0, help_text='Display order position (0-based, lower values appear first)', validators=[django.core.validators.MinValueValidator(0)])),
                 ('is_active', models.BooleanField(db_index=True, default=True, help_text='Whether the link is visible to users')),
                 ('created_at', models.DateTimeField(auto_now_add=True, db_index=True, help_text='Creation timestamp (UAE timezone)')),

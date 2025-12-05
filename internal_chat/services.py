@@ -1,5 +1,6 @@
 """
-Business Logic Services for Internal Chat"""
+Business Logic Services for Internal Chat
+"""
 import logging
 from django.db import transaction
 from django.utils import timezone
