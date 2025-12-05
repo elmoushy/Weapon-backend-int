@@ -729,7 +729,7 @@ class Response(models.Model):
     # Response metadata
     submitted_at = models.DateTimeField(auto_now_add=True)
     is_complete = models.BooleanField(default=True)
-    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    # Note: ip_address field removed for privacy - use DeviceResponse for device tracking
     
     class Meta:
         db_table = 'surveys_response'
