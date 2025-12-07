@@ -13,8 +13,8 @@ router = DefaultRouter()
 router.register(r'', QuickLinkViewSet, basename='quicklink')
 
 urlpatterns = [
-    # Direct icon download endpoint (bypasses DRF content negotiation)
-    path('<int:pk>/icon/', download_icon, name='quicklink-icon'),
-    # Router URLs
+    # Direct icon download endpoint (bypasses DRF content negotiation) - GET only
+    path('<int:pk>/icon/download/', download_icon, name='quicklink-icon-download'),
+    # Router URLs (includes POST/DELETE to /icon/ via viewset actions)
     path('', include(router.urls)),
 ]

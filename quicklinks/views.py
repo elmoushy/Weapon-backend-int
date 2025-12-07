@@ -261,20 +261,50 @@ class QuickLinkViewSet(viewsets.ModelViewSet):
         
         return Response(status=status.HTTP_204_NO_CONTENT)
     
-    @action(detail=True, methods=['post', 'delete'], url_path='icon')
+    @action(detail=True, methods=['get'], url_path='icon', renderer_classes=[PassthroughRenderer])
     def icon(self, request, pk=None):
         """
-        Icon management endpoint (upload/delete).
+        Download icon for quick link.
         
-        POST: Upload icon
-        DELETE: Remove icon
+        GET: Download icon as binary
         """
         quicklink = self.get_object()
+        return self._download_icon_response(request, quicklink)
+    
+    @icon.mapping.post
+    def icon_upload(self, request, pk=None):
+        """Upload icon to quick link"""
+        quicklink = self.get_object()
+        return self._upload_icon(request, quicklink)
+    
+    @icon.mapping.delete
+    def icon_delete(self, request, pk=None):
+        """Delete icon from quick link"""
+        quicklink = self.get_object()
+        return self._delete_icon(request, quicklink)
+    
+    def _download_icon_response(self, request, quicklink):
+        """Download icon for quick link - returns binary response"""
+        if not quicklink.has_icon:
+            return Response({
+                'status': 'error',
+                'message': 'Quick link does not have an icon',
+                'data': None
+            }, status=status.HTTP_404_NOT_FOUND)
         
-        if request.method == 'POST':
-            return self._upload_icon(request, quicklink)
-        else:  # DELETE
-            return self._delete_icon(request, quicklink)
+        # Return icon as binary response
+        response = HttpResponse(
+            quicklink.icon_data,
+            content_type=quicklink.icon_mime_type or 'application/octet-stream'
+        )
+        
+        # Set content disposition for inline display
+        filename = quicklink.icon_original_filename or f'icon-{quicklink.pk}'
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        response['Content-Length'] = len(quicklink.icon_data)
+        response['Cache-Control'] = 'public, max-age=86400'  # 24 hours
+        
+        return response
     
     @action(detail=True, methods=['get'], url_path='icon/download', renderer_classes=[PassthroughRenderer])
     def icon_download(self, request, pk=None):

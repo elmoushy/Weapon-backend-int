@@ -25,7 +25,9 @@ except Exception as e:
 # Load environment variables from .env file (optional)
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    # Explicitly load from the backend .env file
+    env_path = Path(__file__).resolve().parent.parent / '.env'
+    load_dotenv(env_path, override=True)
 except ImportError:
     # dotenv not installed, use default values
     pass
@@ -98,6 +100,7 @@ MIDDLEWARE = [
     'weaponpowercloud_backend.middleware.brute_force_protection.BruteForceProtectionMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'weaponpowercloud_backend.middleware.api_csrf_exempt.ApiCsrfExemptMiddleware',  # Exempt API from CSRF
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'authentication.middleware.UniversalAuthMiddleware',  # Ensure JWT compatibility
@@ -287,6 +290,9 @@ NEWS_MAX_IMAGES_PER_ITEM = 10
 # CORS Configuration
 # Read CORS settings from environment variables
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',') if origin.strip()]
+
+# CSRF Configuration
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',') if origin.strip()]
 
 CORS_ALLOW_CREDENTIALS = os.getenv('CORS_ALLOW_CREDENTIALS', 'True').lower() == 'true'
 
