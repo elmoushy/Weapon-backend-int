@@ -5,23 +5,29 @@ This module provides serializers for QuickLink model with:
 - URL-based icon access
 - Icon upload handling
 - Bulk position update support
+- User-specific preference data (pins, recent access)
 """
 
 from rest_framework import serializers
 from django.urls import reverse
-from .models import QuickLink
+from .models import QuickLink, UserQuickLinkPreference
 from weaponpowercloud_backend.utils import build_absolute_uri_https
 
 
 class QuickLinkSerializer(serializers.ModelSerializer):
     """
-    Serializer for QuickLink with URL-based icon access.
+    Serializer for QuickLink with URL-based icon access and user preferences.
     
     Returns icon URL for download endpoint instead of
     embedding binary data in JSON responses.
+    
+    Includes user-specific fields (is_pinned, last_accessed_at) when
+    user preferences are passed via context.
     """
     
     icon_url = serializers.SerializerMethodField()
+    is_pinned = serializers.SerializerMethodField()
+    last_accessed_at = serializers.SerializerMethodField()
     
     class Meta:
         model = QuickLink
@@ -32,10 +38,12 @@ class QuickLinkSerializer(serializers.ModelSerializer):
             'redirect_url',
             'position',
             'is_active',
+            'is_pinned',
+            'last_accessed_at',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'icon_url', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'icon_url', 'is_pinned', 'last_accessed_at', 'created_at', 'updated_at']
     
     def get_icon_url(self, obj):
         """Generate URL for downloading icon if it exists"""
@@ -47,6 +55,20 @@ class QuickLinkSerializer(serializers.ModelSerializer):
             'quicklink-icon',
             {'pk': obj.pk}
         )
+    
+    def get_is_pinned(self, obj):
+        """Get pinned status from user preferences context"""
+        user_prefs = self.context.get('user_prefs', {})
+        pref = user_prefs.get(obj.id)
+        return pref.is_pinned if pref else False
+    
+    def get_last_accessed_at(self, obj):
+        """Get last access time from user preferences context"""
+        user_prefs = self.context.get('user_prefs', {})
+        pref = user_prefs.get(obj.id)
+        if pref and pref.last_accessed_at:
+            return pref.last_accessed_at.isoformat()
+        return None
 
 
 class QuickLinkCreateSerializer(serializers.ModelSerializer):

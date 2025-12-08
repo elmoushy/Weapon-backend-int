@@ -6,6 +6,9 @@ Implements ViewSet for Quick Links with:
 - Icon upload/download/delete
 - Bulk position updates
 - Admin-only write access
+- User-specific ordering (pinned, recent, others)
+- Pin/unpin toggle endpoint
+- Click tracking endpoint
 """
 
 import logging
@@ -18,7 +21,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 
-from .models import QuickLink
+from .models import QuickLink, UserQuickLinkPreference
 from .serializers import (
     QuickLinkSerializer,
     QuickLinkCreateSerializer,
@@ -122,6 +125,9 @@ class QuickLinkViewSet(viewsets.ModelViewSet):
     - DELETE /quicklinks/{id}/icon/ - Delete icon (admin only)
     - GET /quicklinks/{id}/icon/ - Download icon
     - PATCH /quicklinks/positions/ - Bulk update positions (admin only)
+    - POST /quicklinks/{id}/pin/ - Toggle pin status for current user
+    - POST /quicklinks/{id}/click/ - Record a click for current user
+    - GET /quicklinks/my-preferences/ - Get user's pinned and recent links
     """
     
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
@@ -161,21 +167,75 @@ class QuickLinkViewSet(viewsets.ModelViewSet):
             return QuickLinkUpdateSerializer
         return QuickLinkSerializer
     
+    def get_serializer_context(self):
+        """Add user preferences to serializer context"""
+        context = super().get_serializer_context()
+        
+        # Add user preferences for personalized data
+        if self.request.user.is_authenticated:
+            user_prefs = {
+                pref.quicklink_id: pref 
+                for pref in UserQuickLinkPreference.objects.filter(user=self.request.user)
+            }
+            context['user_prefs'] = user_prefs
+        
+        return context
+    
     def list(self, request, *args, **kwargs):
-        """List quick links with custom response format"""
-        queryset = self.filter_queryset(self.get_queryset())
+        """
+        List quick links with custom response format.
         
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+        Returns links ordered by user preference:
+        1. Pinned first (by pin_order)
+        2. Recently accessed
+        3. Remaining by default position
+        """
+        user = request.user
+        base_queryset = self.get_queryset()
         
-        serializer = self.get_serializer(queryset, many=True)
+        # Get ordered quicklinks for this user
+        quicklinks, user_prefs = UserQuickLinkPreference.get_ordered_quicklinks_for_user(
+            user, 
+            base_queryset
+        )
+        
+        # Use pagination if configured
+        page_size = request.query_params.get('page_size', 20)
+        page = request.query_params.get('page', 1)
+        
+        try:
+            page_size = int(page_size)
+            page = int(page)
+        except ValueError:
+            page_size = 20
+            page = 1
+        
+        # Calculate pagination
+        total_count = len(quicklinks)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_quicklinks = quicklinks[start_idx:end_idx]
+        
+        # Serialize with user preferences context
+        serializer = self.get_serializer(
+            paginated_quicklinks, 
+            many=True, 
+            context={
+                'request': request,
+                'user_prefs': user_prefs
+            }
+        )
+        
         return Response({
             'status': 'success',
             'message': 'Quick links retrieved successfully',
             'data': {
-                'count': len(serializer.data),
+                'count': total_count,
+                'total_pages': (total_count + page_size - 1) // page_size,
+                'current_page': page,
+                'page_size': page_size,
+                'next': None if end_idx >= total_count else f'?page={page + 1}&page_size={page_size}',
+                'previous': None if page <= 1 else f'?page={page - 1}&page_size={page_size}',
                 'results': serializer.data
             }
         })
@@ -451,4 +511,107 @@ class QuickLinkViewSet(viewsets.ModelViewSet):
             'status': 'success',
             'message': 'Positions updated successfully',
             'data': None
+        })
+    
+    @action(detail=True, methods=['post'], url_path='pin')
+    def pin(self, request, pk=None):
+        """
+        Toggle pin status for a quick link for the current user.
+        
+        POST /quicklinks/{id}/pin/
+        
+        Returns:
+            is_pinned: boolean - new pin status
+        """
+        quicklink = self.get_object()
+        user = request.user
+        
+        pref, is_now_pinned = UserQuickLinkPreference.toggle_pin(user, quicklink)
+        
+        logger.info(f"User {user.id} {'pinned' if is_now_pinned else 'unpinned'} quicklink {quicklink.id}")
+        
+        return Response({
+            'status': 'success',
+            'message': 'تم التثبيت بنجاح' if is_now_pinned else 'تم إلغاء التثبيت',
+            'data': {
+                'quicklink_id': quicklink.id,
+                'is_pinned': is_now_pinned,
+                'pin_order': pref.pin_order if is_now_pinned else None
+            }
+        })
+    
+    @action(detail=True, methods=['post'], url_path='click')
+    def click(self, request, pk=None):
+        """
+        Record a click/access for a quick link by the current user.
+        
+        POST /quicklinks/{id}/click/
+        
+        This updates the last_accessed_at timestamp and click_count
+        for personalized ordering.
+        """
+        quicklink = self.get_object()
+        user = request.user
+        
+        pref = UserQuickLinkPreference.record_access(user, quicklink)
+        
+        logger.debug(f"User {user.id} clicked quicklink {quicklink.id} (count: {pref.click_count})")
+        
+        return Response({
+            'status': 'success',
+            'message': 'تم تسجيل النقر',
+            'data': {
+                'quicklink_id': quicklink.id,
+                'click_count': pref.click_count,
+                'last_accessed_at': pref.last_accessed_at.isoformat()
+            }
+        })
+    
+    @action(detail=False, methods=['get'], url_path='my-preferences')
+    def my_preferences(self, request):
+        """
+        Get current user's quick link preferences (pins and recent).
+        
+        GET /quicklinks/my-preferences/
+        
+        Returns a summary of pinned links and recent links separately.
+        """
+        user = request.user
+        
+        prefs = UserQuickLinkPreference.objects.filter(user=user).select_related('quicklink')
+        
+        pinned = []
+        recent = []
+        
+        for pref in prefs:
+            if not pref.quicklink.is_active:
+                continue
+                
+            item = {
+                'quicklink_id': pref.quicklink_id,
+                'name': pref.quicklink.name,
+                'is_pinned': pref.is_pinned,
+                'pin_order': pref.pin_order,
+                'last_accessed_at': pref.last_accessed_at.isoformat() if pref.last_accessed_at else None,
+                'click_count': pref.click_count
+            }
+            
+            if pref.is_pinned:
+                pinned.append(item)
+            elif pref.last_accessed_at:
+                recent.append(item)
+        
+        # Sort pinned by pin_order, recent by last_accessed_at
+        pinned.sort(key=lambda x: x['pin_order'])
+        recent.sort(key=lambda x: x['last_accessed_at'] or '', reverse=True)
+        
+        return Response({
+            'status': 'success',
+            'message': 'User preferences retrieved successfully',
+            'data': {
+                'pinned_count': len(pinned),
+                'recent_count': len(recent),
+                'pinned': pinned,
+                'recent': recent[:10]  # Limit recent to 10 items
+            }
         })

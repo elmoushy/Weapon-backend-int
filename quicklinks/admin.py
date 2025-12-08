@@ -4,7 +4,7 @@ Django Admin configuration for quicklinks app.
 
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import QuickLink
+from .models import QuickLink, UserQuickLinkPreference
 
 
 @admin.register(QuickLink)
@@ -64,3 +64,25 @@ class QuickLinkAdmin(admin.ModelAdmin):
             )
         return "No icon uploaded"
     icon_preview.short_description = 'Icon Preview'
+
+
+@admin.register(UserQuickLinkPreference)
+class UserQuickLinkPreferenceAdmin(admin.ModelAdmin):
+    """Admin interface for User Quick Link Preferences"""
+    
+    list_display = [
+        'user',
+        'quicklink',
+        'is_pinned',
+        'pin_order',
+        'click_count',
+        'last_accessed_at',
+    ]
+    
+    list_filter = ['is_pinned', 'created_at']
+    search_fields = ['user__email', 'quicklink__name']
+    ordering = ['user', '-is_pinned', 'pin_order', '-last_accessed_at']
+    
+    readonly_fields = ['created_at', 'updated_at']
+    
+    raw_id_fields = ['user', 'quicklink']

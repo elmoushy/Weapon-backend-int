@@ -5,12 +5,14 @@ This module defines the database model for Quick Links with:
 - BLOB-based icon storage (no filesystem dependencies)
 - SVG and optimized image support
 - Oracle and SQLite compatibility
+- User-specific pins and recent access tracking
 """
 
 import logging
 from django.db import models
 from django.core.validators import MinValueValidator, URLValidator
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -190,3 +192,208 @@ class QuickLink(models.Model):
     def __str__(self):
         status = "✓" if self.is_active else "✗"
         return f"[{status}] {self.name} (pos: {self.position})"
+
+
+class UserQuickLinkPreference(models.Model):
+    """
+    User-specific preferences for quick links.
+    
+    Tracks:
+    - Pinned links per user
+    - Last access time per link for recent ordering
+    - Click count for analytics
+    
+    The ordering logic is: Pinned first (by pin_order), then by last_accessed_at (recent first)
+    """
+    
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='quicklink_preferences',
+        help_text="User who owns this preference"
+    )
+    
+    quicklink = models.ForeignKey(
+        QuickLink,
+        on_delete=models.CASCADE,
+        related_name='user_preferences',
+        help_text="Quick link this preference applies to"
+    )
+    
+    is_pinned = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Whether the user has pinned this quick link"
+    )
+    
+    pin_order = models.IntegerField(
+        default=0,
+        help_text="Order among pinned items (lower = first)"
+    )
+    
+    last_accessed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Last time user clicked/accessed this link"
+    )
+    
+    click_count = models.IntegerField(
+        default=0,
+        help_text="Total click count for this link by this user"
+    )
+    
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="When this preference was created"
+    )
+    
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text="Last update timestamp"
+    )
+    
+    class Meta:
+        unique_together = ['user', 'quicklink']
+        ordering = ['-is_pinned', 'pin_order', '-last_accessed_at']
+        verbose_name = "User Quick Link Preference"
+        verbose_name_plural = "User Quick Link Preferences"
+        indexes = [
+            models.Index(fields=['user', '-is_pinned', 'pin_order']),
+            models.Index(fields=['user', '-last_accessed_at']),
+        ]
+    
+    def __str__(self):
+        pinned = "📌" if self.is_pinned else ""
+        return f"{self.user.email} - {self.quicklink.name} {pinned}"
+    
+    @classmethod
+    def record_access(cls, user, quicklink):
+        """
+        Record a user accessing (clicking) a quick link.
+        Creates preference if it doesn't exist.
+        
+        Args:
+            user: User who accessed the link
+            quicklink: QuickLink that was accessed
+            
+        Returns:
+            UserQuickLinkPreference instance
+        """
+        pref, created = cls.objects.get_or_create(
+            user=user,
+            quicklink=quicklink,
+            defaults={
+                'last_accessed_at': timezone.now(),
+                'click_count': 1
+            }
+        )
+        
+        if not created:
+            pref.last_accessed_at = timezone.now()
+            pref.click_count += 1
+            pref.save(update_fields=['last_accessed_at', 'click_count', 'updated_at'])
+        
+        return pref
+    
+    @classmethod
+    def toggle_pin(cls, user, quicklink):
+        """
+        Toggle pin status for a quick link.
+        
+        Args:
+            user: User toggling the pin
+            quicklink: QuickLink to pin/unpin
+            
+        Returns:
+            tuple: (UserQuickLinkPreference, is_now_pinned)
+        """
+        pref, created = cls.objects.get_or_create(
+            user=user,
+            quicklink=quicklink
+        )
+        
+        pref.is_pinned = not pref.is_pinned
+        
+        if pref.is_pinned:
+            # Assign next pin order
+            max_order = cls.objects.filter(
+                user=user, 
+                is_pinned=True
+            ).aggregate(max_order=models.Max('pin_order'))['max_order']
+            pref.pin_order = (max_order or -1) + 1
+        else:
+            pref.pin_order = 0
+        
+        pref.save(update_fields=['is_pinned', 'pin_order', 'updated_at'])
+        
+        return pref, pref.is_pinned
+    
+    @classmethod
+    def get_ordered_quicklinks_for_user(cls, user, queryset=None):
+        """
+        Get quick links ordered by user preference:
+        1. Pinned first (by pin_order)
+        2. Recently accessed
+        3. Remaining by default position
+        
+        Args:
+            user: User to get preferences for
+            queryset: Base QuickLink queryset (optional)
+            
+        Returns:
+            List of QuickLink objects with user preference data
+        """
+        from django.db.models import Case, When, Value, IntegerField, F
+        from django.db.models.functions import Coalesce
+        
+        if queryset is None:
+            queryset = QuickLink.objects.active().defer('icon_data')
+        
+        # Get user preferences
+        user_prefs = {
+            pref.quicklink_id: pref 
+            for pref in cls.objects.filter(user=user).select_related('quicklink')
+        }
+        
+        # Annotate quicklinks with user preference data
+        quicklink_ids_pinned = [
+            qid for qid, pref in user_prefs.items() if pref.is_pinned
+        ]
+        quicklink_ids_accessed = [
+            qid for qid, pref in user_prefs.items() 
+            if pref.last_accessed_at and not pref.is_pinned
+        ]
+        
+        # Create ordering cases
+        # Priority: 0 = pinned, 1 = recently accessed, 2 = others
+        queryset = queryset.annotate(
+            user_priority=Case(
+                When(id__in=quicklink_ids_pinned, then=Value(0)),
+                When(id__in=quicklink_ids_accessed, then=Value(1)),
+                default=Value(2),
+                output_field=IntegerField()
+            )
+        )
+        
+        # Get all quicklinks
+        quicklinks = list(queryset)
+        
+        # Sort with custom key
+        def sort_key(ql):
+            pref = user_prefs.get(ql.id)
+            if pref and pref.is_pinned:
+                # Pinned: priority 0, then by pin_order
+                return (0, pref.pin_order, 0)
+            elif pref and pref.last_accessed_at:
+                # Recently accessed: priority 1, then by last_accessed (newer first)
+                # Use negative timestamp for descending order
+                timestamp = pref.last_accessed_at.timestamp() if pref.last_accessed_at else 0
+                return (1, 0, -timestamp)
+            else:
+                # Others: priority 2, then by position
+                return (2, ql.position, 0)
+        
+        quicklinks.sort(key=sort_key)
+        
+        return quicklinks, user_prefs
