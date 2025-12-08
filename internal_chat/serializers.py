@@ -9,6 +9,7 @@ from .models import (
     Attachment, MessageReaction, AuditLog
 )
 from .services import ThreadService
+from weaponpowercloud_backend.utils import build_absolute_uri_https, force_https
 
 User = get_user_model()
 
@@ -57,10 +58,10 @@ class AttachmentSerializer(serializers.ModelSerializer):
             try:
                 from django.urls import reverse
                 download_path = reverse('internal_chat:attachment-download', kwargs={'pk': obj.pk})
-                return request.build_absolute_uri(download_path)
+                return force_https(request.build_absolute_uri(download_path), request)
             except Exception:
                 # Fallback: construct URL manually
-                return request.build_absolute_uri(f'/api/internal-chat/attachments/{obj.pk}/download/')
+                return force_https(request.build_absolute_uri(f'/api/internal-chat/attachments/{obj.pk}/download/'), request)
         return None
 
 

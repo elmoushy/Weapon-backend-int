@@ -337,9 +337,12 @@ class QuickLinkViewSet(viewsets.ModelViewSet):
             quicklink.icon_original_filename = icon_data['original_filename']
             quicklink.save()
             
-            # Generate icon URL
-            icon_url = request.build_absolute_uri(
-                f'/api/quicklinks/{quicklink.pk}/icon/'
+            # Generate icon URL (ensure HTTPS in production)
+            from weaponpowercloud_backend.utils import build_absolute_uri_https
+            icon_url = build_absolute_uri_https(
+                request,
+                f'/api/quicklinks/{quicklink.pk}/icon/',
+                use_reverse=False
             )
             
             return Response({

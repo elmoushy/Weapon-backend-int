@@ -1999,7 +1999,8 @@ class SurveyViewSet(ModelViewSet):
                 ).order_by('-created_at')
 
                 links_data = []
-                base_url = request.build_absolute_uri('/').rstrip('/')
+                from weaponpowercloud_backend.utils import build_absolute_uri_https
+                base_url = build_absolute_uri_https(request, '/', use_reverse=False).rstrip('/')
 
                 for token_obj in active_tokens:
                     if token_obj.is_valid():

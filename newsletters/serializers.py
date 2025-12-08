@@ -8,6 +8,7 @@ with support for image URL generation and encrypted field handling.
 from rest_framework import serializers
 from django.urls import reverse
 from .models import Newsletter, NewsletterImage
+from weaponpowercloud_backend.utils import build_absolute_uri_https
 
 
 class NewsletterImageSerializer(serializers.ModelSerializer):
@@ -38,21 +39,19 @@ class NewsletterImageSerializer(serializers.ModelSerializer):
     
     def get_download_url(self, obj):
         """Generate URL for downloading full image"""
-        request = self.context.get('request')
-        if request:
-            return request.build_absolute_uri(
-                reverse('newsletter-image-download', kwargs={'pk': obj.pk})
-            )
-        return None
+        return build_absolute_uri_https(
+            self.context.get('request'),
+            'newsletter-image-download',
+            {'pk': obj.pk}
+        )
     
     def get_thumbnail_url(self, obj):
         """Generate URL for downloading thumbnail"""
-        request = self.context.get('request')
-        if request:
-            return request.build_absolute_uri(
-                reverse('newsletter-image-thumbnail', kwargs={'pk': obj.pk})
-            )
-        return None
+        return build_absolute_uri_https(
+            self.context.get('request'),
+            'newsletter-image-thumbnail',
+            {'pk': obj.pk}
+        )
 
 
 class NewsletterSerializer(serializers.ModelSerializer):

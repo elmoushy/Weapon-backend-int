@@ -10,6 +10,7 @@ This module provides serializers for QuickLink model with:
 from rest_framework import serializers
 from django.urls import reverse
 from .models import QuickLink
+from weaponpowercloud_backend.utils import build_absolute_uri_https
 
 
 class QuickLinkSerializer(serializers.ModelSerializer):
@@ -41,12 +42,11 @@ class QuickLinkSerializer(serializers.ModelSerializer):
         if not obj.has_icon:
             return None
         
-        request = self.context.get('request')
-        if request:
-            return request.build_absolute_uri(
-                reverse('quicklink-icon', kwargs={'pk': obj.pk})
-            )
-        return None
+        return build_absolute_uri_https(
+            self.context.get('request'),
+            'quicklink-icon',
+            {'pk': obj.pk}
+        )
 
 
 class QuickLinkCreateSerializer(serializers.ModelSerializer):
@@ -124,12 +124,11 @@ class QuickLinkUpdateSerializer(serializers.ModelSerializer):
         if not obj.has_icon:
             return None
         
-        request = self.context.get('request')
-        if request:
-            return request.build_absolute_uri(
-                reverse('quicklink-icon', kwargs={'pk': obj.pk})
-            )
-        return None
+        return build_absolute_uri_https(
+            self.context.get('request'),
+            'quicklink-icon',
+            {'pk': obj.pk}
+        )
     
     def validate_name(self, value):
         """Validate name length"""
